@@ -1,0 +1,8 @@
+name: ask-user-form
+version: "2.0"
+description: >-
+  Lets the agent pause mid-task and ask the user a structured question (a form)
+  over the OpenAI Responses API. The form is delivered in-band as the ask_user
+  function_call's arguments — no webhook, no spool, no backend round-trip to
+  receive it. Restores the "ask the user" capability that the API-server toolset
+  omits (it drops the built-in clarify/send_message tools).
