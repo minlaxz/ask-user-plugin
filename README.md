@@ -29,9 +29,9 @@ agent calls ask_user(fields=[…])
 | File | Runs in | Purpose |
 |------|---------|---------|
 | `plugin.yaml` | Hermes | Manifest |
-| `__init__.py` | Hermes | `register()` — wires the tool + audit hook |
+| `__init__.py` | Hermes | `register()` — wires the tool, the audit hook and the turn guard |
 | `schemas.py` | Hermes | `ask_user` tool schema (what the LLM fills in) |
-| `tools.py` | Hermes | Handler — validate the form, return the stop sentinel |
+| `tools.py` | Hermes | Handler — validate the form, return the stop sentinel; the turn guard |
 | `resume.py` | your proxy | Validate answers + build the resume `input` (optional) |
 
 ## Install
@@ -150,13 +150,44 @@ input_str = build_resume_input(answers)        # the string to put in `input`
 
 ## How the "stop" works
 
-The tool returns a sentinel result with no answer data and an explicit
-stop-instruction, and the tool description states that calling it ends the turn.
-With a capable model that reliably halts the loop (a Yes/No test confirms it:
-`status: "completed"`, no fabricated answer). For a deterministic guarantee, the
-`pre_tool_call` hook stub in `__init__.py` shows where to block any further tool
-call once a form is pending — enable it once you've confirmed the block contract
-for your Hermes version.
+Two layers, because the first one is only a request.
+
+**1. The sentinel (advisory).** The tool returns a result with no answer data and
+an explicit stop-instruction, and the tool description states that calling it ends
+the turn. A capable model usually halts on that alone (`status: "completed"`, no
+fabricated answer).
+
+**2. The turn guard (enforced).** A model is free to ignore a string, and on the
+Sessions API one did: the run keeps going after the sentinel comes back, and the
+model spent that opening on a *second* `ask_user`. That strands the first form —
+a frontend keeps only the newest unanswered form answerable, so form one locks
+having never been answerable once (issue #1).
+
+So `guard_pre_tool_call` is registered on `pre_tool_call` and blocks every tool
+call that follows an `ask_user` in the same turn:
+
+```python
+{"action": "block", "message": "A form is already pending for this turn. STOP NOW…"}
+```
+
+The guard scopes on `turn_id` and counts both spellings of the call — `ask_user`
+called directly, and `tool_call{"name": "ask_user"}` when the model arrives via
+the meta-tool chain. It fails open on a Hermes build that passes no `turn_id` or
+ignores the directive; you are then back to the sentinel alone.
+
+Run the guard's self-check with no Hermes and no dependencies:
+
+```bash
+python3 tools.py     # → tools.py self-check: OK
+```
+
+> **What the guard does not fix.** It stops a second form; it does not make the
+> first one answerable sooner. The turn does not end when `ask_user` fires — the
+> agent still adds a closing remark before the run completes, measured at 4.1 s
+> on a clean single-form turn. A frontend that disables a form while a turn is in
+> flight will show it inert for that long. Hermes exposes no way for a tool to end
+> a turn (`block` returns an error to the model; `pre_verify` does the opposite),
+> so that gap belongs to the frontend.
 
 ## Notes / limits
 
