@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ask User Plugin"
+  short_description: "Repo-specific patterns and workflows for ask-user-plugin"
+  default_prompt: "Use the ask-user-plugin repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
