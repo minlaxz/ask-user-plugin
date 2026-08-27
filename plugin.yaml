@@ -1,5 +1,5 @@
 name: ask-user-form
-version: "2.0"
+version: "2.1"
 description: >-
   Lets the agent pause mid-task and ask the user a structured question (a form)
   over the OpenAI Responses API. The form is delivered in-band as the ask_user

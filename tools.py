@@ -27,10 +27,19 @@ logger = logging.getLogger("ask_user_form")
 _VALID_TYPES = {"text", "textarea", "number", "boolean", "select", "multiselect"}
 _CHOICE_TYPES = {"select", "multiselect"}
 
+# The text the model must reply with after a form. Hermes' loop cannot end a
+# turn on a tool result — the model always has to produce a final assistant
+# message. Told to "output nothing", it invents one instead ("I'm sorry — the
+# form did not display properly") and re-asks the question in prose. So the
+# sentinel names the exact reply, and the frontend hides it (see README).
+FORM_PENDING_TEXT = "Please fill in the form above."
+
 _STOP_INSTRUCTION = (
-    "The form has been presented to the user. STOP NOW: end your turn and output "
-    "nothing further. Do NOT guess or fabricate the user's answers. The "
-    "conversation resumes automatically when the user submits the form."
+    "SUCCESS: the form is now displayed to the user and is waiting for their "
+    f"answers. Your final message for this turn must be exactly: \"{FORM_PENDING_TEXT}\" "
+    "— nothing else. Do NOT apologise, do NOT say the form failed, do NOT repeat "
+    "the question in text, do NOT call any more tools, and do NOT guess the "
+    "user's answers. The conversation resumes automatically when the user submits."
 )
 
 
@@ -93,9 +102,10 @@ ASK_USER = "ask_user"
 ENVELOPE = "tool_call"
 
 _BLOCK_MESSAGE = (
-    "A form is already pending for this turn. STOP NOW: end your turn and output "
-    "nothing further. Do NOT ask again and do NOT guess or fabricate the user's "
-    "answers. The conversation resumes automatically when the user submits the form."
+    "A form is already displayed and pending for this turn. Your final message "
+    f"must be exactly: \"{FORM_PENDING_TEXT}\" — nothing else. Do NOT ask again, "
+    "do NOT call tools, and do NOT guess the user's answers. The conversation "
+    "resumes automatically when the user submits the form."
 )
 
 # Turns that have already raised a form. A turn_id matters only while its turn
@@ -183,5 +193,7 @@ if __name__ == "__main__":
     assert json.loads(handle_ask_user({"fields": [{"key": "a", "type": "select"}]}))["error"]
     ok = json.loads(handle_ask_user({"fields": [{"key": "a", "label": "A"}]}))
     assert ok["status"] == "awaiting_user_input"
+    assert FORM_PENDING_TEXT in ok["instruction"], "sentinel must name the exact reply"
+    assert FORM_PENDING_TEXT in _BLOCK_MESSAGE
 
     print("tools.py self-check: OK")

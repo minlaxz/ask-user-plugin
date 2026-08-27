@@ -109,9 +109,12 @@ The `ask_user` call is a `function_call` item; its `arguments` is a JSON **strin
 3. Keep the response `id` (`resp_…`) for the resume call. `call_id` correlates the
    call if you need it.
 
-The turn ends with `response.completed` / `status: "completed"`. The assistant may
-emit a short "waiting for your reply" message — that's narration; ignore it and
-render the form.
+The turn ends with `response.completed` / `status: "completed"`. Hermes cannot end
+a turn on a tool result, so the assistant always emits one final text message
+after the form. The sentinel pins that message to exactly
+**`Please fill in the form above.`** (`FORM_PENDING_TEXT` in `tools.py`).
+**Hide it**: when a response contains an `ask_user` function_call, drop the
+assistant text and render the form. Do not show the text as a chat bubble.
 
 > The tool's own result (the `function_call_output`) only carries a stop sentinel
 > to end the turn. You don't need to read it — render from `arguments`. Note its
@@ -152,10 +155,13 @@ input_str = build_resume_input(answers)        # the string to put in `input`
 
 Two layers, because the first one is only a request.
 
-**1. The sentinel (advisory).** The tool returns a result with no answer data and
-an explicit stop-instruction, and the tool description states that calling it ends
-the turn. A capable model usually halts on that alone (`status: "completed"`, no
-fabricated answer).
+**1. The sentinel (advisory).** The tool returns a result with no answer data,
+confirms the form is displayed, and names the exact one-line reply the model must
+finish with. It used to say "output nothing further" — but the model *must* emit a
+final message, so it invented one instead: *"I'm sorry — the form did not display
+properly"* followed by the question re-asked in prose (issue #3, seen live on
+`gpt-5.6-terra`). Giving it a fixed line to say removes the excuse to improvise;
+the frontend hides that line.
 
 **2. The turn guard (enforced).** A model is free to ignore a string, and on the
 Sessions API one did: the run keeps going after the sentinel comes back, and the
@@ -167,7 +173,7 @@ So `guard_pre_tool_call` is registered on `pre_tool_call` and blocks every tool
 call that follows an `ask_user` in the same turn:
 
 ```python
-{"action": "block", "message": "A form is already pending for this turn. STOP NOW…"}
+{"action": "block", "message": "A form is already displayed and pending for this turn…"}
 ```
 
 The guard scopes on `turn_id` and counts both spellings of the call — `ask_user`
